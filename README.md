@@ -10,5 +10,13 @@ This smart contract randomly picks a winner for the lottery, for the funders who
 * Chainlink Oracle is used for Verified Randomness and Automated Execution
 
 ### Getting Started
+clone this repo
+```
+yarn
+```
+
 
 ### How to use
+```
+yarn hardhat run scripts/deploy.js
+```
