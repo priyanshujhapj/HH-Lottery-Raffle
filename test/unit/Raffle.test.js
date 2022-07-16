@@ -1,5 +1,6 @@
 const { assert, expect } = require("chai")
 const {getNamedAccounts, network, deployments, ethers} = require("hardhat")
+const { resolveConfig } = require("prettier")
 const {developmentChains, networkConfig} = require("../../helper-hardhat-config")
 
 !developmentChains.includes(network.name) 
@@ -109,6 +110,71 @@ const {developmentChains, networkConfig} = require("../../helper-hardhat-config"
                 const raffleState = await raffle.getRaffleState()
                 assert(requestId.toNumber() > 0)
                 assert(raffleState.toString() == "1")
+            })
+        })
+
+        describe ("fulfillRandomWords", function () {
+            beforeEach (async function () {
+                await raffle.enterRaffle({value: raffleEntranceFee})
+                await network.provider.send("evm_increaseTime", [interval.toNumber() + 1])
+                await network.provider.send("evm_mine", [])
+            })
+
+            it ("can only be called after proformUpkeep", async function () {
+                await expect(vrfCoordinatorV2Mock.fulfillRandomWords(0, raffle.address)).to.be.revertedWith("nonexistent request")
+                await expect(vrfCoordinatorV2Mock.fulfillRandomWords(1, raffle.address)).to.be.revertedWith("nonexistent request")
+            })
+
+            it ("picks a winner, reset the lottery and sends money", async function () {
+                const additionalEntrants = 3
+                const startingAccountIndex = 1
+                const accounts = await ethers.getSigners()
+
+                for (let i=startingAccountIndex; i<startingAccountIndex + additionalEntrants; i++) {
+                    const accountConnectedRaffle = raffle.connect(accounts[i])
+                    await raffle.enterRaffle({value: raffleEntranceFee})
+                }
+
+                const startingTimeStamp = await raffle.getLatestTimeStamp()
+                let recentWinnerIndex
+
+                new Promise (async (resolve, reject) => {
+                    raffle.once("WinnerPicked", async () => {
+                        try {
+                            const recentWinner = await raffle.getRecentWinner()
+                            for (let i=0; i<accounts.length; i++) {
+                                if (recentWinner.address === accounts[i].address) {
+                                    recentWinnerIndex = i
+                                    break
+                                }
+                            }
+                            const endingTimeStamp = await raffle.getLatestTimeStamp()
+                            const numPlayers = await raffle.getNumOfPlayers()
+                            const raffleState = await raffle.getRaffleState()
+                            const winnerEndingBalance = await accounts[recentWinnerIndex].getBalance()
+                            assert.equal(numPlayers.toString(), "0")
+                            assert.equal(raffleState.toString(), "0")
+                            assert(startingTimeStamp < endingTimeStamp)
+                            assert.equal(
+                                winnerEndingBalance.toString(),
+                                winnerStartingBalance.add(
+                                    raffleEntranceFee.mul(additionalEntrants)
+                                    .add(raffleEntranceFee)
+                                    .toString()
+                                )
+                            )
+                        } catch (e) {
+                            console.log(e)
+                        }
+                        resolve()
+                    })
+                    const tx = await raffle.performUpkeep([])
+                    const txReceipt = await tx.wait(1)
+                    const winnerStartingBalance = await accounts[recentWinnerIndex].getBalance()
+                    await vrfCoordinatorV2Mock.fulfillRandomWords(
+                        txReceipt.events[1].args.requestId, raffle.address
+                    )
+                })
             })
         })
     })
