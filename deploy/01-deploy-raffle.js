@@ -1,8 +1,12 @@
-const { network, ethers } = require("hardhat")
-const { networkConfig, developmentChains } = require("../helper-hardhat-config")
+const { getNamedAccounts, deployments, network, run, ethers } = require("hardhat")
+const {
+    networkConfig,
+    developmentChains,
+    VERIFICATION_BLOCK_CONFIRMATIONS,
+} = require("../helper-hardhat-config")
 const { verify } = require("../utils/verify")
 
-const FUND_AMOUNT = ethers.utils.parseEther("2")
+const FUND_AMOUNT = "1000000000000000000000"
 
 module.exports = async ({ getNamedAccounts, deployments }) => {
     const { deploy, log } = deployments
@@ -10,31 +14,45 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     const chainId = network.config.chainId
     let vrfCoordinatorV2Address, subscriptionId
 
-    if (developmentChains.includes(network.name)) {
+    if (chainId == 31337) {
+        // create VRFV2 Subscription
         const vrfCoordinatorV2Mock = await ethers.getContract("VRFCoordinatorV2Mock")
         vrfCoordinatorV2Address = vrfCoordinatorV2Mock.address
         const transactionResponse = await vrfCoordinatorV2Mock.createSubscription()
         const transactionReceipt = await transactionResponse.wait()
         subscriptionId = transactionReceipt.events[0].args.subId
+        // Fund the subscription
+        // Our mock makes it so we don't actually have to worry about sending fund
         await vrfCoordinatorV2Mock.fundSubscription(subscriptionId, FUND_AMOUNT)
     } else {
         vrfCoordinatorV2Address = networkConfig[chainId]["vrfCoordinatorV2"]
         subscriptionId = networkConfig[chainId]["subscriptionId"]
     }
+    const waitBlockConfirmations = developmentChains.includes(network.name)
+        ? 1
+        : VERIFICATION_BLOCK_CONFIRMATIONS
 
+    log("----------------------------------------------------")
     const arguments = [
         vrfCoordinatorV2Address,
-        networkConfig[chainId]["entranceFee"],
+        networkConfig[chainId]["raffleEntranceFee"],
         networkConfig[chainId]["gasLane"],
         subscriptionId,
         networkConfig[chainId]["callbackGasLimit"],
-        networkConfig[chainId]["interval"],
+        networkConfig[chainId]["keepersUpdateInterval"],
     ]
     const raffle = await deploy("Raffle", {
         from: deployer,
-        args: arguments,
+        args: [
+            "0x6168499c0cFfCaCD319c818142124B7A15E857ab",
+            ethers.utils.parseEther("0.1"),
+            "0xd89b2bf150e3b9e13446986e571fb9cab24b13cea0a43ea20a6049a85cc807cc",
+            "8174",
+            "500000",
+            "30"
+        ],
         log: true,
-        waitConfirmations: network.config.blockConfrimations || 1
+        waitConfirmations: waitBlockConfirmations,
     })
 
     // Verify the deployment
@@ -42,6 +60,11 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         log("Verifying...")
         await verify(raffle.address, arguments)
     }
+
+    log("Enter lottery with command:")
+    const networkName = network.name == "hardhat" ? "localhost" : network.name
+    log(`yarn hardhat run scripts/enterRaffle.js --network ${networkName}`)
+    log("----------------------------------------------------")
 }
 
 module.exports.tags = ["all", "raffle"]

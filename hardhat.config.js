@@ -25,6 +25,14 @@ module.exports = {
       accounts: [PRIVATE_KEY]
     }
   },
+  etherscan: {
+    // yarn hardhat verify --network <NETWORK> <CONTRACT_ADDRESS> <CONSTRUCTOR_PARAMETERS>
+    apiKey: {
+        rinkeby: ETHERSCAN_API_KEY,
+        // kovan: ETHERSCAN_API_KEY,
+        // polygon: POLYGONSCAN_API_KEY,
+    },
+  },
   gasReporter: {
     enabled: false,
     outputFile: "gas-report.txt",
@@ -33,7 +41,20 @@ module.exports = {
     coinmarketCap: COINMARKETCAP_API_KEY,
     // token: "MATIC",
   },
-  solidity: "0.8.7",
+  // contractSizer: {
+  //   runOnCompile: false,
+  //   only: ["Raffle"],
+  // },
+  solidity: {
+    compilers: [
+        {
+            version: "0.8.7",
+        },
+        {
+            version: "0.4.24",
+        },
+    ],
+  },
   namedAccounts: {
     deployer: {
       default: 0
@@ -43,6 +64,6 @@ module.exports = {
     }
   },
   mocha: {
-    timeout: 300000,
+    timeout: 500000,
   },
 };
